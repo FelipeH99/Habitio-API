@@ -55,7 +55,7 @@ export const createHabitSchema = z.object({
     startTime: z.string().regex(/^\d{2}:\d{2}$/),
     endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
     mode: z.enum(habitWindowModes).default('fixed'),
-  }),
+  }).optional(),
 });
 
 export type CreateHabitInput = z.infer<typeof createHabitSchema>;
@@ -69,6 +69,7 @@ export function serializeHabit(habit: HabitRecord) {
     streak: habit.current_streak ?? 0,
     bestStreak: habit.best_streak ?? 0,
     privacy: habit.privacy,
+    hasSchedule: Boolean(habit.start_time),
     schedule: {
       daysOfWeek: parseDaysOfWeek(habit.days_of_week),
       windowLabel: formatWindowLabel(habit),
@@ -136,20 +137,22 @@ export async function createHabit(userId: string, input: CreateHabitInput) {
       }
     );
 
-    await connection.execute(
-      `
-        INSERT INTO habit_windows (id, habit_id, days_of_week, start_time, end_time, mode)
-        VALUES (:id, :habitId, :daysOfWeek, :startTime, :endTime, :mode)
-      `,
-      {
-        id: randomUUID(),
-        habitId,
-        daysOfWeek: JSON.stringify(input.schedule.daysOfWeek),
-        startTime: input.schedule.startTime,
-        endTime: input.schedule.endTime ?? null,
-        mode: input.schedule.mode,
-      }
-    );
+    if (input.schedule) {
+      await connection.execute(
+        `
+          INSERT INTO habit_windows (id, habit_id, days_of_week, start_time, end_time, mode)
+          VALUES (:id, :habitId, :daysOfWeek, :startTime, :endTime, :mode)
+        `,
+        {
+          id: randomUUID(),
+          habitId,
+          daysOfWeek: JSON.stringify(input.schedule.daysOfWeek),
+          startTime: input.schedule.startTime,
+          endTime: input.schedule.endTime ?? null,
+          mode: input.schedule.mode,
+        }
+      );
+    }
 
     await connection.execute(
       `
@@ -183,7 +186,7 @@ export async function createTodayInstances(userId: string, now = new Date()) {
   const habits = await listHabits(userId);
 
   for (const habit of habits) {
-    if (!parseDaysOfWeek(habit.days_of_week).includes(dayOfWeek) || !habit.start_time) {
+    if (habit.start_time && !parseDaysOfWeek(habit.days_of_week).includes(dayOfWeek)) {
       continue;
     }
 
@@ -196,11 +199,13 @@ export async function createTodayInstances(userId: string, now = new Date()) {
         id: randomUUID(),
         habitId: habit.id,
         scheduledAt: toMySqlDateTime(start),
-        dueLabel: formatDueLabel({
-          start_time: habit.start_time,
-          end_time: habit.end_time,
-          mode: habit.mode ?? 'fixed',
-        }),
+        dueLabel: habit.start_time
+          ? formatDueLabel({
+              start_time: habit.start_time,
+              end_time: habit.end_time,
+              mode: habit.mode ?? 'fixed',
+            })
+          : 'En cualquier momento',
       }
     );
   }

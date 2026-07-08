@@ -48,6 +48,9 @@ DATABASE_URL="mysql://habitio:habitio@localhost:3307/habitio"
 PORT=3002
 NODE_ENV=development
 CORS_ORIGIN="http://localhost:8082,http://localhost:19006"
+JSON_BODY_LIMIT="100kb"
+RATE_LIMIT_MAX=120
+RATE_LIMIT_WINDOW_MS=60000
 ```
 
 ### 3. Instalar, migrar y levantar API
@@ -158,3 +161,56 @@ EXPO_PUBLIC_HABITIO_USER_ID=dev-user
 - `POST /instances/:id/checkin`
 
 Durante el MVP sin autenticacion, la API usa el header `x-user-id` si existe y, si no, crea/usa `dev-user`.
+
+## Habitos con horario y sin horario
+
+`POST /habits` acepta dos variantes:
+
+Habito sin horario:
+
+```json
+{
+  "name": "Caminar 5 mil pasos",
+  "description": "Meta flexible para completar durante el dia",
+  "color": "blue",
+  "privacy": "private"
+}
+```
+
+Habito con horario:
+
+```json
+{
+  "name": "Meditar",
+  "description": "Sesion corta antes de trabajar",
+  "color": "mint",
+  "privacy": "private",
+  "schedule": {
+    "daysOfWeek": [1, 2, 3, 4, 5],
+    "startTime": "09:00",
+    "endTime": "09:30",
+    "mode": "fixed"
+  }
+}
+```
+
+`GET /instances/today` devuelve instancias para ambos tipos. Las instancias sin horario usan `dueLabel: "En cualquier momento"`.
+
+## Produccion
+
+La API incluye:
+
+- Validacion de variables de entorno al arrancar.
+- Headers HTTP de seguridad con `helmet`.
+- Rate limit basico configurable.
+- `x-request-id` en cada respuesta.
+- Logs de requests con metodo, ruta, status, duracion y request id.
+- Errores JSON consistentes.
+
+Variables opcionales:
+
+```sh
+JSON_BODY_LIMIT="100kb"
+RATE_LIMIT_MAX=120
+RATE_LIMIT_WINDOW_MS=60000
+```

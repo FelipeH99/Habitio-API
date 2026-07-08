@@ -1,15 +1,21 @@
 import cors from 'cors';
 import express from 'express';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { config } from './config.js';
 import { pingDatabase } from './db.js';
 import { checkInInstance, createHabit, createHabitSchema, createTodayInstances, listHabits, serializeHabit, serializeInstance } from './habits.js';
-import { asyncRoute, errorHandler, HttpError } from './http.js';
+import { asyncRoute, errorHandler, HttpError, notFoundHandler, requestContext, requestLogger } from './http.js';
 import { getRequestUser } from './users.js';
 
 export function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', 1);
+  app.use(requestContext);
+  app.use(requestLogger);
+  app.use(helmet());
   app.use(cors({
     credentials: true,
     origin: (origin, callback) => {
@@ -21,7 +27,12 @@ export function createApp() {
       callback(new HttpError(403, 'Origin not allowed by CORS'));
     },
   }));
-  app.use(express.json());
+  app.use(rateLimit({
+    limit: config.rateLimitMax,
+    standardHeaders: true,
+    windowMs: config.rateLimitWindowMs,
+  }));
+  app.use(express.json({ limit: config.jsonBodyLimit }));
 
   app.get('/', (_request, response) => {
     response.json({
@@ -36,12 +47,13 @@ export function createApp() {
       status: 'ok',
       env: config.nodeEnv,
       uptime: Math.round(process.uptime()),
+      requestId: response.locals.requestId,
     });
   });
 
   app.get('/health/db', asyncRoute(async (_request, response) => {
     await pingDatabase();
-    response.json({ status: 'ok' });
+    response.json({ status: 'ok', requestId: response.locals.requestId });
   }));
 
   app.get('/habits', asyncRoute(async (request, response) => {
@@ -83,6 +95,7 @@ export function createApp() {
     response.json({ data: serializeInstance(instance) });
   }));
 
+  app.use(notFoundHandler);
   app.use(errorHandler);
 
   return app;
