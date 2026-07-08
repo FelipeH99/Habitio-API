@@ -10,20 +10,100 @@ Backend MVP para Habitio.
 
 Nota: el modelo recomendado originalmente para Prisma esta implementado como migracion SQL directa porque este backend no usa Prisma.
 
-## Setup local
+## Setup local completo
+
+La API necesita MySQL. La forma mas simple para desarrollo local es Docker.
+
+### 1. Levantar MySQL
 
 ```sh
+docker run --name habitio-mysql \
+  -e MYSQL_ROOT_PASSWORD=root \
+  -e MYSQL_DATABASE=habitio \
+  -e MYSQL_USER=habitio \
+  -e MYSQL_PASSWORD=habitio \
+  -p 3307:3306 \
+  -d mysql:8
+```
+
+Se usa el puerto local `3307` para evitar conflicto si ya tenes otro MySQL en `3306`.
+
+Si el contenedor ya existe y solo esta apagado:
+
+```sh
+docker start habitio-mysql
+```
+
+### 2. Configurar variables
+
+```sh
+cd /Users/felipeh/repos/Habitio/Habitio-API
 cp .env.example .env
+```
+
+El `.env` local debe quedar asi:
+
+```sh
+DATABASE_URL="mysql://habitio:habitio@localhost:3307/habitio"
+PORT=3002
+NODE_ENV=development
+CORS_ORIGIN="http://localhost:8082,http://localhost:19006"
+```
+
+### 3. Instalar, migrar y levantar API
+
+```sh
 npm install
 npm run db:migrate
 npm run dev
 ```
 
-La app Expo debe apuntar a esta API con:
+La API local queda en:
 
 ```sh
-EXPO_PUBLIC_API_URL=http://localhost:3000
+http://localhost:3002
 ```
+
+### 4. Verificar API y DB
+
+En otra terminal:
+
+```sh
+curl http://localhost:3002/health
+curl http://localhost:3002/health/db
+curl http://localhost:3002/habits
+```
+
+Respuestas esperadas:
+
+```json
+{"status":"ok"}
+```
+
+`/habits` debe responder un JSON con `data`.
+
+## Usar con la app local
+
+En `../habitio-app/.env`:
+
+```sh
+EXPO_PUBLIC_API_URL=http://localhost:3002
+EXPO_PUBLIC_HABITIO_USER_ID=dev-user
+```
+
+Luego levantar Expo desde el repo de la app:
+
+```sh
+cd /Users/felipeh/repos/Habitio/habitio-app
+npx expo start --clear
+```
+
+La app convierte automaticamente `localhost` para simuladores nativos:
+
+- Android emulator: usa `10.0.2.2`.
+- iOS simulator y web: usa el host local.
+
+Si cambias el puerto de la API, cambia tambien `EXPO_PUBLIC_API_URL` y reinicia Expo con `--clear`.
 
 ## Deploy
 
@@ -34,7 +114,7 @@ Variables requeridas:
 ```sh
 DATABASE_URL=mysql://USER:PASSWORD@HOST:PORT/DATABASE
 NODE_ENV=production
-CORS_ORIGIN=https://tu-app-web.example.com,http://localhost:8082
+CORS_ORIGIN=https://tu-app-web.example.com,http://localhost:8082,http://localhost:19006
 ```
 
 Comandos de la plataforma:
