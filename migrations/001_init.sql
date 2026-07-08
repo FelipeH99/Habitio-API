@@ -1,0 +1,80 @@
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(64) PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS profiles (
+  id VARCHAR(64) PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL UNIQUE,
+  display_name VARCHAR(120) NOT NULL,
+  avatar_url VARCHAR(500) NULL,
+  timezone VARCHAR(80) NOT NULL DEFAULT 'America/Montevideo',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT profiles_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS habits (
+  id VARCHAR(64) PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  name VARCHAR(80) NOT NULL,
+  description TEXT NOT NULL,
+  color ENUM('mint', 'coral', 'blue', 'gold') NOT NULL,
+  privacy ENUM('private', 'friends') NOT NULL DEFAULT 'private',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX habits_user_active_idx (user_id, is_active),
+  CONSTRAINT habits_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS habit_windows (
+  id VARCHAR(64) PRIMARY KEY,
+  habit_id VARCHAR(64) NOT NULL,
+  days_of_week JSON NOT NULL,
+  start_time CHAR(5) NOT NULL,
+  end_time CHAR(5) NULL,
+  mode ENUM('fixed', 'random') NOT NULL DEFAULT 'fixed',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX habit_windows_habit_id_idx (habit_id),
+  CONSTRAINT habit_windows_habit_id_fk FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS habit_instances (
+  id VARCHAR(64) PRIMARY KEY,
+  habit_id VARCHAR(64) NOT NULL,
+  scheduled_at DATETIME NOT NULL,
+  due_label VARCHAR(80) NOT NULL,
+  status ENUM('pending', 'done', 'snoozed', 'skipped') NOT NULL DEFAULT 'pending',
+  checked_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY habit_instances_habit_scheduled_unique (habit_id, scheduled_at),
+  INDEX habit_instances_scheduled_status_idx (scheduled_at, status),
+  CONSTRAINT habit_instances_habit_id_fk FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS streaks (
+  id VARCHAR(64) PRIMARY KEY,
+  habit_id VARCHAR(64) NOT NULL UNIQUE,
+  current INT NOT NULL DEFAULT 0,
+  best INT NOT NULL DEFAULT 0,
+  last_done_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT streaks_habit_id_fk FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  id VARCHAR(64) PRIMARY KEY,
+  user_id VARCHAR(64) NOT NULL,
+  `key` VARCHAR(120) NOT NULL,
+  value JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY settings_user_key_unique (user_id, `key`),
+  CONSTRAINT settings_user_id_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
