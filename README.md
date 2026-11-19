@@ -1,216 +1,86 @@
 # Habitio API
 
-Backend MVP para Habitio.
+API para seguimiento de hábitos: crea hábitos con o sin horario, genera las instancias del día y registra check-ins y rachas.
 
-## Stack
+**TypeScript · Node.js · Express 5 · MySQL · Zod · Docker**
 
-- Node.js + Express
-- MySQL con SQL explicito usando `mysql2`
-- TypeScript
+## Qué demuestra
 
-Nota: el modelo recomendado originalmente para Prisma esta implementado como migracion SQL directa porque este backend no usa Prisma.
+- Modelado relacional de usuarios, hábitos, ventanas horarias, instancias y rachas.
+- SQL explícito con `mysql2`, transacciones y migraciones versionadas.
+- Validación de entradas, errores JSON y seguimiento por `request-id`.
+- Health checks y un script para probar el recorrido completo del MVP.
 
-## Setup local completo
+## Inicio local
 
-La API necesita MySQL. La forma mas simple para desarrollo local es Docker.
-
-### 1. Levantar MySQL
+Requisitos: Node.js 22, npm y MySQL 8. Docker permite levantar una base local:
 
 ```sh
+git clone https://github.com/FelipeH99/Habitio-API.git
+cd Habitio-API
+npm ci
+cp .env.example .env
+
 docker run --name habitio-mysql \
   -e MYSQL_ROOT_PASSWORD=root \
   -e MYSQL_DATABASE=habitio \
   -e MYSQL_USER=habitio \
   -e MYSQL_PASSWORD=habitio \
-  -p 3307:3306 \
-  -d mysql:8
+  -p 127.0.0.1:3307:3306 -d mysql:8
 ```
 
-Se usa el puerto local `3307` para evitar conflicto si ya tenes otro MySQL en `3306`.
-
-Si el contenedor ya existe y solo esta apagado:
+Esperá a que MySQL esté listo y ejecutá:
 
 ```sh
-docker start habitio-mysql
-```
-
-### 2. Configurar variables
-
-```sh
-cd /Users/felipeh/repos/Habitio/Habitio-API
-cp .env.example .env
-```
-
-El `.env` local debe quedar asi:
-
-```sh
-DATABASE_URL="mysql://habitio:habitio@localhost:3307/habitio"
-PORT=3002
-NODE_ENV=development
-CORS_ORIGIN="http://localhost:8082,http://localhost:19006"
-JSON_BODY_LIMIT="100kb"
-RATE_LIMIT_MAX=120
-RATE_LIMIT_WINDOW_MS=60000
-```
-
-### 3. Instalar, migrar y levantar API
-
-```sh
-npm install
 npm run db:migrate
 npm run dev
 ```
 
-La API local queda en:
+La configuración de ejemplo conecta a `localhost:3307` y sirve la API en `http://localhost:3002`. Si el contenedor ya existe, usá `docker start habitio-mysql`.
 
-```sh
-http://localhost:3002
-```
-
-### 4. Verificar API y DB
-
-En otra terminal:
+## Probar un hábito
 
 ```sh
 curl http://localhost:3002/health
 curl http://localhost:3002/health/db
-curl http://localhost:3002/habits
+curl -X POST http://localhost:3002/habits \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Leer 20 minutos","color":"mint","privacy":"private"}'
+curl http://localhost:3002/instances/today
 ```
 
-Respuestas esperadas:
+La última respuesta contiene IDs de instancias. Usá uno en `POST /instances/:id/checkin` para registrar que completaste el hábito.
 
-```json
-{"status":"ok"}
-```
+## API y estructura
 
-`/habits` debe responder un JSON con `data`.
+| Método | Ruta | Uso |
+| --- | --- | --- |
+| GET | `/health` | Estado del proceso |
+| GET | `/health/db` | Conectividad de MySQL |
+| GET / POST | `/habits` | Listar y crear hábitos |
+| GET | `/instances/today` | Generar/consultar instancias del día |
+| POST | `/instances/:id/checkin` | Completar una instancia |
 
-## Usar con la app local
+`src/app.ts` define rutas; `src/habits.ts`, la lógica y el SQL; `src/users.ts`, el usuario de demostración; `migrations/`, el esquema.
 
-En `../habitio-app/.env`:
+## Validación
 
 ```sh
-EXPO_PUBLIC_API_URL=http://localhost:3002
-EXPO_PUBLIC_HABITIO_USER_ID=dev-user
-```
-
-Luego levantar Expo desde el repo de la app:
-
-```sh
-cd /Users/felipeh/repos/Habitio/habitio-app
-npx expo start --clear
-```
-
-La app convierte automaticamente `localhost` para simuladores nativos:
-
-- Android emulator: usa `10.0.2.2`.
-- iOS simulator y web: usa el host local.
-
-Si cambias el puerto de la API, cambia tambien `EXPO_PUBLIC_API_URL` y reinicia Expo con `--clear`.
-
-## Deploy
-
-Camino recomendado para probar sin correr backend local: Railway con un servicio Node/Docker y un plugin MySQL.
-
-Variables requeridas:
-
-```sh
-DATABASE_URL=mysql://USER:PASSWORD@HOST:PORT/DATABASE
-NODE_ENV=production
-CORS_ORIGIN=https://tu-app-web.example.com,http://localhost:8082,http://localhost:19006
-```
-
-Comandos de la plataforma:
-
-```sh
+npm run typecheck
 npm run build
-npm run deploy:start
+API_URL=http://localhost:3002 npm run smoke:remote
 ```
 
-`deploy:start` ejecuta las migraciones SQL pendientes y despues inicia la API. Si usas Docker, el `Dockerfile` ya ejecuta ese comando.
+El smoke test requiere la API y MySQL encendidos y crea datos de prueba. No equivale a una suite unitaria aislada.
 
-Para verificar el deploy desde cualquier navegador:
+## Configuración
 
-```sh
-curl https://tu-api-publica.example.com/health
-curl https://tu-api-publica.example.com/health/db
-```
+Las variables y valores locales están en [`.env.example`](.env.example): `DATABASE_URL`, `PORT`, `NODE_ENV`, `CORS_ORIGIN`, límites de JSON y rate limiting. Usá credenciales propias fuera del entorno local.
 
-Para probar el flujo MVP completo contra la URL publica:
+Para una app cliente, configurá su URL de API con `http://localhost:3002`. En un emulador Android suele ser necesario usar `10.0.2.2`; en un dispositivo físico, la IP accesible del equipo servidor.
 
-```sh
-API_URL=https://tu-api-publica.example.com npm run smoke:remote
-```
+## Alcance del MVP
 
-Ese comando valida health, conexion a DB, creacion de habito, listado de habitos, instancias de hoy y check-in.
+La versión pública **no implementa autenticación**: usa `x-user-id` o `dev-user`. Ese header no demuestra identidad y no ofrece aislamiento seguro entre usuarios. Los headers HTTP, CORS y rate limiting no sustituyen autenticación ni autorización.
 
-Luego configura la app con la URL publica:
-
-```sh
-EXPO_PUBLIC_API_URL=https://tu-api-publica.example.com
-EXPO_PUBLIC_HABITIO_USER_ID=dev-user
-```
-
-## Endpoints MVP
-
-- `GET /health`
-- `GET /health/db`
-- `GET /habits`
-- `POST /habits`
-- `GET /instances/today`
-- `POST /instances/:id/checkin`
-
-Durante el MVP sin autenticacion, la API usa el header `x-user-id` si existe y, si no, crea/usa `dev-user`.
-
-## Habitos con horario y sin horario
-
-`POST /habits` acepta dos variantes:
-
-Habito sin horario:
-
-```json
-{
-  "name": "Caminar 5 mil pasos",
-  "description": "Meta flexible para completar durante el dia",
-  "color": "blue",
-  "privacy": "private"
-}
-```
-
-Habito con horario:
-
-```json
-{
-  "name": "Meditar",
-  "description": "Sesion corta antes de trabajar",
-  "color": "mint",
-  "privacy": "private",
-  "schedule": {
-    "daysOfWeek": [1, 2, 3, 4, 5],
-    "startTime": "09:00",
-    "endTime": "09:30",
-    "mode": "fixed"
-  }
-}
-```
-
-`GET /instances/today` devuelve instancias para ambos tipos. Las instancias sin horario usan `dueLabel: "En cualquier momento"`.
-
-## Produccion
-
-La API incluye:
-
-- Validacion de variables de entorno al arrancar.
-- Headers HTTP de seguridad con `helmet`.
-- Rate limit basico configurable.
-- `x-request-id` en cada respuesta.
-- Logs de requests con metodo, ruta, status, duracion y request id.
-- Errores JSON consistentes.
-
-Variables opcionales:
-
-```sh
-JSON_BODY_LIMIT="100kb"
-RATE_LIMIT_MAX=120
-RATE_LIMIT_WINDOW_MS=60000
-```
+`npm run deploy:start` aplica migraciones y arranca el servidor compilado. Antes de exponerlo a usuarios reales, incorporá autenticación, autorización y pruebas de permisos.
